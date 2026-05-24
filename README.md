@@ -1,6 +1,7 @@
-# Attention Benchmark Base
+# Attention Benchmark Suite
 
-Code nền dùng chung để đo execution time và peak memory cho các biến thể attention.
+Code nền dùng chung để đo runtime, peak memory, KV-cache decode, batch-size sensitivity,
+head-dimension scaling, prefill/decode split và PyTorch profiler cho các biến thể attention.
 
 ## Cài đặt
 
@@ -10,14 +11,49 @@ pip install -r requirements.txt
 
 ## Chạy benchmark
 
+Chạy toàn bộ experiment stress + profiling + figures bằng một lệnh:
+
+```bash
+chmod +x run.sh
+./run.sh --max-size 30000
+```
+
+Chạy bản nhẹ để kiểm tra pipeline:
+
+```bash
+./run.sh --max-size 2048 --warmup-runs 1 --measure-runs 2
+```
+
+Trong stress run, các baseline quadratic (`naive`, `decode_no_cache`, `no_cache`) được tự động skip khi sequence/context length lớn hơn `8192`. CSV vẫn giữ row đó với `status=skipped,error=SKIP`.
+
 ```bash
 python main.py
 ```
+
+Mặc định là preset `smoke`: nhỏ, chạy được để kiểm tra pipeline.
 
 Chạy nhanh để smoke test:
 
 ```bash
 python main.py --seq-lengths 128 256 --warmup-runs 2 --measure-runs 5
+```
+
+Chạy bộ MUST HAVE:
+
+```bash
+python main.py --preset must-have
+```
+
+Chạy bộ CV-tier đầy đủ:
+
+```bash
+python main.py --preset cv
+```
+
+Chạy CV-tier có stress lengths tới một ngưỡng cụ thể:
+
+```bash
+python main.py --preset cv --max-size 30000 --baseline-max-size 8192
 ```
 
 Chỉ chạy full self-attention:
@@ -38,11 +74,64 @@ Chỉ chạy KV-cache inference decode:
 python main.py --scenarios kv_decode --decode-methods decode_no_cache decode_kv_cache
 ```
 
+Chạy batch-size sensitivity:
+
+```bash
+python main.py --scenarios batch_size --fixed-seq-len 4096 --batch-sizes 1 2 4 8 16
+```
+
+Chạy head-dimension scaling:
+
+```bash
+python main.py --scenarios head_dim --fixed-seq-len 4096 --head-dims 32 64 128 256
+```
+
+Chạy prefill/decode split:
+
+```bash
+python main.py --scenarios prefill_decode --context-lengths 1024 2048 4096 8192 16384
+```
+
 Kết quả được ghi vào:
 
 ```text
 results/benchmark_results.csv
 ```
+
+## Vẽ figures
+
+Sau khi có CSV:
+
+```bash
+python plot_results.py --input results/benchmark_results.csv --output-dir figures
+```
+
+Script này sinh các hình chính:
+
+- `fig1_runtime_vs_sequence_length.png`
+- `fig2_peak_memory_vs_sequence_length.png`
+- `fig3_speedup_ratio.png`
+- `fig4_kv_cache_per_token_latency.png`
+- `fig5_kv_cache_memory_tradeoff.png`
+- `fig6_batch_size_heatmap.png`
+- `fig7_gpu_memory_hierarchy.png`
+
+Nếu đã chạy profiler và có `results/profiler_summary.csv`, script sẽ sinh thêm:
+
+- `fig8_gpu_profiling_timeline.png`
+
+## GPU profiling
+
+```bash
+python profile_attention.py --seq-len 4096 --methods naive sdpa flash_sdpa
+```
+
+Kết quả:
+
+- `results/profiler_summary.csv`
+- `results/profiler_trace_<method>_N<seq_len>.json`
+
+File trace JSON mở được bằng Chrome tracing hoặc các tool đọc Chrome trace.
 
 ## Methods hiện có
 
@@ -67,6 +156,18 @@ head_dim,model_dim,causal,warmup_runs,measure_runs,mean_time_ms,median_time_ms,
 min_time_ms,max_time_ms,time_per_token_ms,tokens_per_sec,peak_memory_mb,
 cache_memory_mb,status,error
 ```
+
+Schema hiện tại có thêm các cột phục vụ phân nhóm và plot:
+
+```text
+experiment,phase,sweep_value,baseline_method,speedup_vs_baseline
+```
+
+Các giá trị lỗi được chuẩn hóa để CSV gọn:
+
+- `status=oom,error=OOM`
+- `status=error,error=ERR`
+- `status=skipped,error=SKIP`
 
 Ý nghĩa `seq_len`:
 
