@@ -135,16 +135,20 @@ def _flash_attn_func(
 
 
 def _flash_attn_interface():
-    try:
-        return import_module("flash_attn.flash_attn_interface")
-    except ImportError:
+    for module_name in (
+        "flash_attn.flash_attn_interface",
+        "flash_attn",
+        "flash_attn_interface",
+    ):
         try:
-            return import_module("flash_attn")
-        except ImportError as exc:
-            raise RuntimeError(
-                "flash_attn requires the external flash-attn package. "
-                "Install a build compatible with your CUDA/PyTorch."
-            ) from exc
+            return import_module(module_name)
+        except ImportError:
+            continue
+
+    raise RuntimeError(
+        "flash_attn requires the external flash-attn package. "
+        "Install a build compatible with your CUDA/PyTorch."
+    )
 
 
 

@@ -22,6 +22,7 @@ from benchmarks.metrics import measure_workload
 
 OOM_ERROR = "OOM"
 RUNTIME_ERROR = "ERR"
+ERROR_DETAIL_KEY = "_error_detail"
 
 
 CSV_FIELDS = (
@@ -619,9 +620,10 @@ def _attach_speedups(
 
 def _exception_status(exc: BaseException) -> dict[str, str]:
     message = str(exc).lower()
+    detail = f"{exc.__class__.__name__}: {str(exc).splitlines()[0]}"
     if isinstance(exc, torch.cuda.OutOfMemoryError) or "out of memory" in message:
-        return {"status": "oom", "error": OOM_ERROR}
-    return {"status": "error", "error": RUNTIME_ERROR}
+        return {"status": "oom", "error": OOM_ERROR, ERROR_DETAIL_KEY: detail}
+    return {"status": "error", "error": RUNTIME_ERROR, ERROR_DETAIL_KEY: detail}
 
 
 def _empty_measurement_columns() -> dict[str, str]:
@@ -641,7 +643,27 @@ def _empty_measurement_columns() -> dict[str, str]:
 
 def write_csv(rows: list[dict[str, Any]], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    write_error_details(rows, output_path)
     with output_path.open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
+        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_error_details(rows: list[dict[str, Any]], output_path: Path) -> None:
+    details = [
+        row
+        for row in rows
+        if row.get(ERROR_DETAIL_KEY)
+    ]
+    if not details:
+        return
+
+    log_path = output_path.parent / "error_details.log"
+    with log_path.open("w") as file:
+        for row in details:
+            file.write(
+                f"{row.get('experiment')} | {row.get('scenario')} | {row.get('method')} | "
+                f"N={row.get('seq_len')} | status={row.get('status')} | "
+                f"{row.get(ERROR_DETAIL_KEY)}\n"
+            )

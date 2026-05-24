@@ -1,0 +1,2 @@
+experiment,scenario,phase,method,device,dtype,batch_size,num_heads,seq_len,context_len,decode_tokens,head_dim,model_dim,causal,warmup_runs,measure_runs,mean_time_ms,median_time_ms,min_time_ms,max_time_ms,time_per_token_ms,tokens_per_sec,peak_memory_mb,cache_memory_mb,sweep_value,baseline_method,speedup_vs_baseline,status,error
+runtime_memory_scaling,full_attention,attention,flash_attn,cpu,float32,1,8,128,,,64,512,True,1,1,,,,,,,,,128,naive,,error,ERR

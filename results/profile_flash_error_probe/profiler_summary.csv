@@ -1,0 +1,2 @@
+method,device,seq_len,batch_size,num_heads,head_dim,self_time_ms,trace_path,status,error
+flash_attn,cpu,16,1,8,64,,,error,ERR

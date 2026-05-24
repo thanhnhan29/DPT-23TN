@@ -11,6 +11,7 @@ from benchmarks.runner import choose_device, choose_dtype, make_qkv
 
 OOM_ERROR = "OOM"
 RUNTIME_ERROR = "ERR"
+ERROR_DETAIL_KEY = "_error_detail"
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,12 +107,29 @@ def main() -> None:
                     "trace_path": "",
                     "status": status,
                     "error": error,
+                    ERROR_DETAIL_KEY: f"{exc.__class__.__name__}: {str(exc).splitlines()[0]}",
                 }
             )
 
     summary_path = output_dir / "profiler_summary.csv"
+    _write_error_details(rows, output_dir / "profiler_error_details.log")
     with summary_path.open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=rows[0].keys())
+        writer = csv.DictWriter(
+            file,
+            fieldnames=[
+                "method",
+                "device",
+                "seq_len",
+                "batch_size",
+                "num_heads",
+                "head_dim",
+                "self_time_ms",
+                "trace_path",
+                "status",
+                "error",
+            ],
+            extrasaction="ignore",
+        )
         writer.writeheader()
         writer.writerows(rows)
 
@@ -137,6 +155,19 @@ def _self_device_time_us(item: object, device_type: str) -> float:
                 return float(value)
 
     return float(getattr(item, "self_cpu_time_total", 0.0))
+
+
+def _write_error_details(rows: list[dict[str, str | float | int]], output_path: Path) -> None:
+    details = [row for row in rows if row.get(ERROR_DETAIL_KEY)]
+    if not details:
+        return
+
+    with output_path.open("w") as file:
+        for row in details:
+            file.write(
+                f"{row.get('method')} | N={row.get('seq_len')} | "
+                f"status={row.get('status')} | {row.get(ERROR_DETAIL_KEY)}\n"
+            )
 
 
 if __name__ == "__main__":
