@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=("naive", "sdpa", "flash_sdpa"),
+        default=("naive", "sdpa", "flash_attn"),
     )
     parser.add_argument("--output-dir", default="results")
     parser.add_argument("--no-causal", action="store_true")

@@ -22,7 +22,6 @@ from benchmarks.metrics import measure_workload
 
 OOM_ERROR = "OOM"
 RUNTIME_ERROR = "ERR"
-SKIP_ERROR = "SKIP"
 
 
 CSV_FIELDS = (
@@ -190,11 +189,6 @@ def run_full_attention_benchmarks(
                 seq_len=seq_len,
             )
 
-            if _should_skip_quadratic_baseline(method, seq_len, config):
-                row.update(_empty_measurement_columns())
-                row.update({"status": "skipped", "error": SKIP_ERROR})
-                rows.append(row)
-                continue
             try:
                 attention_fn = ATTENTION_METHODS[method]
                 clear_memory(device)
@@ -277,12 +271,6 @@ def run_kv_decode_benchmarks(
                 context_len=context_len,
                 decode_tokens=config.decode_tokens,
             )
-
-            if _should_skip_quadratic_decode(method, context_len, config):
-                row.update(_empty_measurement_columns())
-                row.update({"status": "skipped", "error": SKIP_ERROR})
-                rows.append(row)
-                continue
 
             try:
                 clear_memory(device)
@@ -401,36 +389,25 @@ def run_prefill_decode_benchmarks(
             seed=config.seed + context_len + 60_000,
         )
 
-        if _should_skip_quadratic_prefill_decode("no_cache", context_len, config):
-            rows.extend(
-                _skipped_prefill_decode_rows(
-                    config=config,
-                    device=device,
-                    dtype=dtype,
-                    context_len=context_len,
-                    method="no_cache",
-                )
+        rows.extend(
+            _measure_prefill_decode_case(
+                config=config,
+                device=device,
+                dtype=dtype,
+                context=context,
+                new_tokens=new_tokens,
+                weights=weights,
+                context_len=context_len,
+                method="no_cache",
+                prefill_setup_fn=lambda: lambda: decoder_attention_full_sequence(
+                    context, weights, config.num_heads
+                ),
+                decode_setup_fn=lambda: lambda: decode_no_cache(
+                    context, new_tokens, weights, config.num_heads
+                ),
+                cache_memory_mb=0.0,
             )
-        else:
-            rows.extend(
-                _measure_prefill_decode_case(
-                    config=config,
-                    device=device,
-                    dtype=dtype,
-                    context=context,
-                    new_tokens=new_tokens,
-                    weights=weights,
-                    context_len=context_len,
-                    method="no_cache",
-                    prefill_setup_fn=lambda: lambda: decoder_attention_full_sequence(
-                        context, weights, config.num_heads
-                    ),
-                    decode_setup_fn=lambda: lambda: decode_no_cache(
-                        context, new_tokens, weights, config.num_heads
-                    ),
-                    cache_memory_mb=0.0,
-                )
-            )
+        )
 
         rows.extend(
             _measure_prefill_decode_case(
@@ -566,38 +543,6 @@ def _measure_prefill_decode_case(
     return rows
 
 
-def _skipped_prefill_decode_rows(
-    *,
-    config: BenchmarkConfig,
-    device: torch.device,
-    dtype: torch.dtype,
-    context_len: int,
-    method: str,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for phase, phase_decode_tokens in (
-        ("prefill", context_len),
-        ("decode", config.decode_tokens),
-    ):
-        row = base_row(
-            experiment="prefill_decode",
-            scenario="prefill_decode",
-            phase=phase,
-            method=method,
-            device=device,
-            dtype=dtype,
-            config=config,
-            seq_len=context_len,
-            context_len=context_len,
-            decode_tokens=phase_decode_tokens,
-        )
-        row["sweep_value"] = context_len
-        row.update(_empty_measurement_columns())
-        row.update({"status": "skipped", "error": SKIP_ERROR})
-        rows.append(row)
-    return rows
-
-
 def _cache_memory_mb(context: torch.Tensor, weights: Any, num_heads: int) -> float:
     sample_cache = build_kv_cache(context, weights, num_heads)
     cache_memory_mb = cache_nbytes(sample_cache) / (1024**2)
@@ -670,30 +615,6 @@ def _attach_speedups(
         baseline = baselines.get(key)
         if baseline and float(median_time_ms) > 0:
             row["speedup_vs_baseline"] = baseline / float(median_time_ms)
-
-
-def _should_skip_quadratic_baseline(
-    method: str,
-    seq_len: int,
-    config: BenchmarkConfig,
-) -> bool:
-    return method == "naive" and seq_len > config.baseline_max_size
-
-
-def _should_skip_quadratic_decode(
-    method: str,
-    context_len: int,
-    config: BenchmarkConfig,
-) -> bool:
-    return method == "decode_no_cache" and context_len > config.baseline_max_size
-
-
-def _should_skip_quadratic_prefill_decode(
-    method: str,
-    context_len: int,
-    config: BenchmarkConfig,
-) -> bool:
-    return method == "no_cache" and context_len > config.baseline_max_size
 
 
 def _exception_status(exc: BaseException) -> dict[str, str]:

@@ -66,15 +66,15 @@ def flash_sdpa_attention(
         return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
 
 
-def flash_attn_v1_attention(
+def flash_attn_attention(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = True,
 ) -> torch.Tensor:
-    """Call the external flash-attn package; intended for FlashAttention 1.x on Turing."""
+    """Call the external flash-attn package; never fallback to PyTorch SDPA."""
     if q.device.type != "cuda":
-        raise RuntimeError("flash_attn_v1 requires CUDA.")
+        raise RuntimeError("flash_attn requires CUDA.")
 
     q_bshd = q.transpose(1, 2).contiguous()
     k_bshd = k.transpose(1, 2).contiguous()
@@ -142,8 +142,8 @@ def _flash_attn_interface():
             return import_module("flash_attn")
         except ImportError as exc:
             raise RuntimeError(
-                "flash_attn_v1 requires the external flash-attn package. "
-                "Install a FlashAttention 1.x build compatible with your CUDA/PyTorch."
+                "flash_attn requires the external flash-attn package. "
+                "Install a build compatible with your CUDA/PyTorch."
             ) from exc
 
 
@@ -152,6 +152,6 @@ ATTENTION_METHODS: dict[str, AttentionFn] = {
     "naive": naive_attention,
     "sdpa": sdpa_attention,
     "flash_sdpa": flash_sdpa_attention,
-    "flash_attn": flash_attn_v1_attention,
-    "flash_attn_v1": flash_attn_v1_attention,
+    "flash_attn": flash_attn_attention,
+    "flash_attn_v1": flash_attn_attention,
 }

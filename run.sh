@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MAX_SIZE=30000
-BASELINE_MAX_SIZE=8192
+MAX_SIZE=80000
 WARMUP_RUNS=5
 MEASURE_RUNS=20
 OUTPUT="results/benchmark_results.csv"
 FIGURES_DIR="figures"
 PROFILE_OUTPUT_DIR="results"
-PYTHON_BIN="${PYTHON:-python}"
+PYTHON_BIN="${PYTHON:-python3}"
 
 usage() {
   cat <<'EOF'
 Usage: ./run.sh [options]
 
 Options:
-  --max-size N            Max sequence/context length for stress runs. Default: 30000
-  --baseline-max-size N   Skip quadratic baselines above N. Default: 8192
+  --max-size N            Max sequence/context length for stress runs. Default: 80000
   --warmup-runs N         Warmup runs per benchmark. Default: 5
   --measure-runs N        Measured runs per benchmark. Default: 20
   --output PATH           Benchmark CSV path. Default: results/benchmark_results.csv
@@ -30,10 +28,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --max-size)
       MAX_SIZE="$2"
-      shift 2
-      ;;
-    --baseline-max-size)
-      BASELINE_MAX_SIZE="$2"
       shift 2
       ;;
     --warmup-runs)
@@ -77,12 +71,11 @@ FIXED_SEQ_LEN=$(( MAX_SIZE < 4096 ? MAX_SIZE : 4096 ))
 PROFILE_SEQ_LEN=$FIXED_SEQ_LEN
 
 echo "Running stress benchmark up to ${MAX_SIZE} tokens"
-echo "Skipping quadratic baselines above ${BASELINE_MAX_SIZE} tokens"
+echo "Running all baselines at every requested length; OOM rows will be recorded as OOM"
 
 "${PYTHON_BIN}" main.py \
   --preset cv \
   --max-size "${MAX_SIZE}" \
-  --baseline-max-size "${BASELINE_MAX_SIZE}" \
   --fixed-seq-len "${FIXED_SEQ_LEN}" \
   --warmup-runs "${WARMUP_RUNS}" \
   --measure-runs "${MEASURE_RUNS}" \
@@ -90,7 +83,7 @@ echo "Skipping quadratic baselines above ${BASELINE_MAX_SIZE} tokens"
 
 "${PYTHON_BIN}" profile_attention.py \
   --seq-len "${PROFILE_SEQ_LEN}" \
-  --methods naive sdpa flash_sdpa \
+  --methods naive sdpa flash_attn \
   --output-dir "${PROFILE_OUTPUT_DIR}"
 
 "${PYTHON_BIN}" plot_results.py \

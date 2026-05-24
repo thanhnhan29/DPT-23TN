@@ -5,7 +5,6 @@ import sys
 
 from benchmarks.configs import (
     BATCH_SIZES,
-    DEFAULT_BASELINE_MAX_SIZE,
     HEAD_DIMS,
     KV_CONTEXT_LENGTHS,
     RUNTIME_SEQ_LENGTHS,
@@ -27,13 +26,7 @@ def parse_args() -> argparse.Namespace:
         "--max-size",
         type=int,
         default=None,
-        help="Cap stress sequence/context lengths, e.g. --max-size 30000.",
-    )
-    parser.add_argument(
-        "--baseline-max-size",
-        type=int,
-        default=DEFAULT_BASELINE_MAX_SIZE,
-        help="Skip quadratic baselines above this sequence/context length.",
+        help="Cap stress sequence/context lengths, e.g. --max-size 80000.",
     )
     parser.add_argument(
         "--seq-lengths",
@@ -73,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         "--methods",
         nargs="+",
         default=None,
-        help="Full-attention methods. Available: naive, sdpa, flash_sdpa, flash_attn_v1.",
+        help="Full-attention methods. Available: naive, sdpa, flash_attn, flash_sdpa.",
     )
     parser.add_argument(
         "--scenarios",
@@ -101,7 +94,7 @@ def preset_config(args: argparse.Namespace) -> BenchmarkConfig:
         return BenchmarkConfig(
             seq_lengths=RUNTIME_SEQ_LENGTHS,
             context_lengths=KV_CONTEXT_LENGTHS,
-            methods=("naive", "sdpa", "flash_sdpa"),
+            methods=("naive", "sdpa", "flash_attn"),
             scenarios=("full_attention", "kv_decode"),
         )
 
@@ -109,7 +102,7 @@ def preset_config(args: argparse.Namespace) -> BenchmarkConfig:
         return BenchmarkConfig(
             seq_lengths=RUNTIME_SEQ_LENGTHS,
             context_lengths=KV_CONTEXT_LENGTHS,
-            methods=("naive", "sdpa", "flash_sdpa"),
+            methods=("naive", "sdpa", "flash_attn"),
             scenarios=(
                 "full_attention",
                 "kv_decode",
@@ -169,7 +162,6 @@ def main() -> None:
         batch_sizes=tuple(args.batch_sizes) if args.batch_sizes else preset.batch_sizes,
         head_dims=tuple(args.head_dims) if args.head_dims else preset.head_dims,
         fixed_seq_len=args.fixed_seq_len if args.fixed_seq_len else preset.fixed_seq_len,
-        baseline_max_size=args.baseline_max_size,
     )
 
     try:

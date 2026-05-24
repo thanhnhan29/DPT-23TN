@@ -15,7 +15,7 @@ Chạy toàn bộ experiment stress + profiling + figures bằng một lệnh:
 
 ```bash
 chmod +x run.sh
-./run.sh --max-size 30000
+./run.sh --max-size 80000
 ```
 
 Chạy bản nhẹ để kiểm tra pipeline:
@@ -24,7 +24,7 @@ Chạy bản nhẹ để kiểm tra pipeline:
 ./run.sh --max-size 2048 --warmup-runs 1 --measure-runs 2
 ```
 
-Trong stress run, các baseline quadratic (`naive`, `decode_no_cache`, `no_cache`) được tự động skip khi sequence/context length lớn hơn `8192`. CSV vẫn giữ row đó với `status=skipped,error=SKIP`.
+Trong stress run, baseline quadratic (`naive`, `decode_no_cache`, `no_cache`) cũng được thử ở mọi mốc. Nếu GPU hết bộ nhớ, CSV sẽ ghi `status=oom,error=OOM`.
 
 ```bash
 python main.py
@@ -53,7 +53,7 @@ python main.py --preset cv
 Chạy CV-tier có stress lengths tới một ngưỡng cụ thể:
 
 ```bash
-python main.py --preset cv --max-size 30000 --baseline-max-size 8192
+python main.py --preset cv --max-size 80000
 ```
 
 Chỉ chạy full self-attention:
@@ -62,13 +62,13 @@ Chỉ chạy full self-attention:
 python main.py --scenarios full_attention --methods naive sdpa
 ```
 
-Chạy full self-attention và ép PyTorch Flash Attention backend thật:
+Chạy full self-attention với thư viện `flash-attn` thật:
 
 ```bash
-python main.py --scenarios full_attention --methods naive sdpa flash_sdpa
+python main.py --scenarios full_attention --methods naive sdpa flash_attn
 ```
 
-`flash_sdpa` không fallback. Nếu GPU/PyTorch không hỗ trợ Flash backend thật, row sẽ là `status=error,error=ERR`. Trên RTX 4090 (`sm89`) backend này chạy được với PyTorch/CUDA phù hợp.
+`flash_attn` gọi trực tiếp package ngoài `flash-attn` và không fallback sang SDPA. Nếu package/CUDA/PyTorch không tương thích, row sẽ là `status=error,error=ERR`.
 
 Chỉ chạy KV-cache inference decode:
 
@@ -125,7 +125,7 @@ Nếu đã chạy profiler và có `results/profiler_summary.csv`, script sẽ s
 ## GPU profiling
 
 ```bash
-python profile_attention.py --seq-len 4096 --methods naive sdpa flash_sdpa
+python profile_attention.py --seq-len 4096 --methods naive sdpa flash_attn
 ```
 
 Kết quả:
@@ -141,8 +141,8 @@ File trace JSON mở được bằng Chrome tracing hoặc các tool đọc Chro
 
 - `naive`: standard attention, materialize ma trận attention `N x N`.
 - `sdpa`: PyTorch `scaled_dot_product_attention`; trên CUDA có thể dispatch sang memory-efficient hoặc Flash kernels tùy phần cứng/PyTorch.
-- `flash_sdpa`: ép PyTorch dùng Flash Attention backend thật, không fallback sang SDPA thường; nếu không có CUDA/backend phù hợp thì row sẽ báo `error`.
-- `flash_attn_v1`: method optional để gọi package ngoài `flash-attn` nếu bạn tự cài và truyền bằng `--methods`; không nằm trong preset mặc định.
+- `flash_attn`: gọi trực tiếp thư viện ngoài `flash-attn`, không fallback sang SDPA thường; đây là method FlashAttention mặc định trong preset.
+- `flash_sdpa`: method optional để ép PyTorch dùng Flash SDPA backend thật; nếu không có CUDA/backend phù hợp thì row sẽ báo `error`.
 
 ### KV-cache decode
 
@@ -170,7 +170,6 @@ Các giá trị lỗi được chuẩn hóa để CSV gọn:
 
 - `status=oom,error=OOM`
 - `status=error,error=ERR`
-- `status=skipped,error=SKIP`
 
 Ý nghĩa `seq_len`:
 
