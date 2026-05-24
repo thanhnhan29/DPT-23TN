@@ -62,11 +62,13 @@ Chỉ chạy full self-attention:
 python main.py --scenarios full_attention --methods naive sdpa
 ```
 
-Chạy full self-attention và ép Flash Attention backend:
+Chạy full self-attention và ép PyTorch Flash Attention backend thật:
 
 ```bash
 python main.py --scenarios full_attention --methods naive sdpa flash_sdpa
 ```
+
+`flash_sdpa` không fallback. Nếu GPU/PyTorch không hỗ trợ Flash backend thật, row sẽ là `status=error,error=ERR`. Trên RTX 4090 (`sm89`) backend này chạy được với PyTorch/CUDA phù hợp.
 
 Chỉ chạy KV-cache inference decode:
 
@@ -139,7 +141,8 @@ File trace JSON mở được bằng Chrome tracing hoặc các tool đọc Chro
 
 - `naive`: standard attention, materialize ma trận attention `N x N`.
 - `sdpa`: PyTorch `scaled_dot_product_attention`; trên CUDA có thể dispatch sang memory-efficient hoặc Flash kernels tùy phần cứng/PyTorch.
-- `flash_sdpa`: ép PyTorch dùng Flash Attention backend; nếu không có CUDA/backend phù hợp thì row sẽ báo `error`.
+- `flash_sdpa`: ép PyTorch dùng Flash Attention backend thật, không fallback sang SDPA thường; nếu không có CUDA/backend phù hợp thì row sẽ báo `error`.
+- `flash_attn_v1`: method optional để gọi package ngoài `flash-attn` nếu bạn tự cài và truyền bằng `--methods`; không nằm trong preset mặc định.
 
 ### KV-cache decode
 

@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         "--methods",
         nargs="+",
         default=None,
-        help="Full-attention methods. Available: naive, sdpa, flash_sdpa.",
+        help="Full-attention methods. Available: naive, sdpa, flash_sdpa, flash_attn_v1.",
     )
     parser.add_argument(
         "--scenarios",

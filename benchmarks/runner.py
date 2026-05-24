@@ -195,7 +195,6 @@ def run_full_attention_benchmarks(
                 row.update({"status": "skipped", "error": SKIP_ERROR})
                 rows.append(row)
                 continue
-
             try:
                 attention_fn = ATTENTION_METHODS[method]
                 clear_memory(device)

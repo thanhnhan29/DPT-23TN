@@ -19,7 +19,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--num-heads", type=int, default=8)
     parser.add_argument("--head-dim", type=int, default=64)
-    parser.add_argument("--methods", nargs="+", default=("naive", "sdpa", "flash_sdpa"))
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        default=("naive", "sdpa", "flash_sdpa"),
+    )
     parser.add_argument("--output-dir", default="results")
     parser.add_argument("--no-causal", action="store_true")
     return parser.parse_args()
@@ -71,7 +75,7 @@ def main() -> None:
 
             key_averages = prof.key_averages()
             self_time_us = sum(
-                item.self_cuda_time_total if device.type == "cuda" else item.self_cpu_time_total
+                _self_device_time_us(item, device.type)
                 for item in key_averages
             )
             rows.append(
@@ -119,6 +123,20 @@ def _exception_status(exc: BaseException) -> tuple[str, str]:
     if isinstance(exc, torch.cuda.OutOfMemoryError) or "out of memory" in message:
         return "oom", OOM_ERROR
     return "error", RUNTIME_ERROR
+
+
+def _self_device_time_us(item: object, device_type: str) -> float:
+    if device_type == "cuda":
+        for attr_name in (
+            "self_cuda_time_total",
+            "self_device_time_total",
+            "self_gpu_time_total",
+        ):
+            value = getattr(item, attr_name, None)
+            if value is not None:
+                return float(value)
+
+    return float(getattr(item, "self_cpu_time_total", 0.0))
 
 
 if __name__ == "__main__":
