@@ -1,0 +1,4 @@
+method,device,seq_len,batch_size,num_heads,head_dim,self_time_ms,trace_path,status,error
+naive,cuda,4096,1,8,64,6.275599999999999,results/profiler_trace_naive_N4096.json,ok,
+sdpa,cuda,4096,1,8,64,5.233828000000002,results/profiler_trace_sdpa_N4096.json,ok,
+flash_attn,cuda,4096,1,8,64,0.5137859999999992,results/profiler_trace_flash_attn_N4096.json,ok,

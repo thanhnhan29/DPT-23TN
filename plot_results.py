@@ -25,14 +25,19 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
             "seq_len",
             "context_len",
             "batch_size",
+            "num_heads",
             "head_dim",
+            "model_dim",
+            "mean_time_ms",
             "median_time_ms",
+            "min_time_ms",
+            "max_time_ms",
             "peak_memory_mb",
             "time_per_token_ms",
             "tokens_per_sec",
-        "cache_memory_mb",
-        "speedup_vs_baseline",
-        "self_time_ms",
+            "cache_memory_mb",
+            "speedup_vs_baseline",
+            "self_time_ms",
         ):
             row[key] = _number_or_blank(row.get(key, ""))
     return rows
@@ -82,6 +87,63 @@ def main() -> None:
         y_key="speedup_vs_baseline",
         y_label="Speedup ratio",
         loglog=False,
+    )
+    _line_plot(
+        rows,
+        output_dir / "fig9_tokens_per_sec_vs_sequence_length.png",
+        title="Throughput vs Sequence Length",
+        experiment="runtime_memory_scaling",
+        x_key="seq_len",
+        y_key="tokens_per_sec",
+        y_label="Tokens per second",
+        loglog=True,
+    )
+    _line_plot(
+        rows,
+        output_dir / "fig10_batch_size_speedup_lines.png",
+        title="Batch Size Speedup (Lines)",
+        experiment="batch_size_sensitivity",
+        x_key="batch_size",
+        y_key="speedup_vs_baseline",
+        y_label="Speedup vs naive",
+        loglog=False,
+        mark_oom=False,
+    )
+    _line_plot(
+        rows,
+        output_dir / "fig11_batch_size_throughput.png",
+        title="Batch Size Throughput",
+        experiment="batch_size_sensitivity",
+        x_key="batch_size",
+        y_key="tokens_per_sec",
+        y_label="Tokens per second",
+        loglog=False,
+        mark_oom=False,
+    )
+    _facet_line_plot(
+        rows,
+        output_dir / "fig12_runtime_vs_sequence_length_by_head_dim.png",
+        title="Runtime vs Sequence Length by Head Dim",
+        experiment="runtime_memory_scaling",
+        x_key="seq_len",
+        y_key="median_time_ms",
+        y_label="Median time (ms)",
+        facet_key="head_dim",
+        facet_label="Head dim",
+        loglog=True,
+    )
+    _facet_line_plot(
+        rows,
+        output_dir / "fig13_peak_memory_vs_sequence_length_by_head_dim.png",
+        title="Peak Memory vs Sequence Length by Head Dim",
+        experiment="runtime_memory_scaling",
+        x_key="seq_len",
+        y_key="peak_memory_mb",
+        y_label="Peak memory (MB)",
+        facet_key="head_dim",
+        facet_label="Head dim",
+        loglog=True,
+        mark_oom=True,
     )
     _line_plot(
         rows,
@@ -173,12 +235,109 @@ def _line_plot(
     plt.close(fig)
 
 
+def _sorted_unique_values(rows: list[dict[str, Any]], key: str) -> list[Any]:
+    values: list[Any] = []
+    for row in rows:
+        value = row.get(key)
+        if value in ("", None):
+            continue
+        if isinstance(value, float) and math.isnan(value):
+            continue
+        values.append(value)
+
+    def sort_key(value: Any) -> tuple[int, Any]:
+        if isinstance(value, (int, float)):
+            return (0, float(value))
+        return (1, str(value))
+
+    return sorted({value for value in values}, key=sort_key)
+
+
+def _facet_line_plot(
+    rows: list[dict[str, Any]],
+    output_path: Path,
+    *,
+    title: str,
+    experiment: str,
+    x_key: str,
+    y_key: str,
+    y_label: str,
+    facet_key: str,
+    facet_label: str,
+    loglog: bool,
+    mark_oom: bool = True,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    plot_rows = _ok_rows(rows, experiment)
+    facet_values = _sorted_unique_values(plot_rows, facet_key)
+    if len(facet_values) < 2:
+        return
+
+    columns = min(3, len(facet_values))
+    rows_count = math.ceil(len(facet_values) / columns)
+    fig, axes = plt.subplots(
+        rows_count,
+        columns,
+        figsize=(columns * 5.0, rows_count * 4.2),
+        dpi=160,
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+    for idx, facet_value in enumerate(facet_values):
+        ax = axes[idx // columns][idx % columns]
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in plot_rows:
+            if row.get(facet_key) != facet_value:
+                continue
+            if row.get(x_key) != "" and row.get(y_key) != "":
+                grouped[str(row["method"])].append(row)
+
+        if not grouped:
+            ax.axis("off")
+            continue
+
+        for method, method_rows in sorted(grouped.items()):
+            method_rows.sort(key=lambda item: item[x_key])
+            xs = [row[x_key] for row in method_rows]
+            ys = [row[y_key] for row in method_rows]
+            ax.plot(xs, ys, marker="o", linewidth=2, label=method)
+
+        if mark_oom:
+            _mark_status_rows(
+                rows,
+                ax,
+                experiment=experiment,
+                x_key=x_key,
+                filters={facet_key: facet_value},
+            )
+
+        if loglog:
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+        ax.set_title(f"{facet_label}: {facet_value}")
+        ax.set_xlabel(x_key)
+        ax.set_ylabel(y_label)
+        ax.grid(True, which="both", alpha=0.25)
+        ax.legend()
+
+    for idx in range(len(facet_values), rows_count * columns):
+        axes[idx // columns][idx % columns].axis("off")
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
 def _mark_status_rows(
     rows: list[dict[str, Any]],
     ax: Any,
     *,
     experiment: str,
     x_key: str,
+    filters: dict[str, Any] | None = None,
 ) -> None:
     styles = {
         "oom": ("x", "crimson", "OOM"),
@@ -189,6 +348,9 @@ def _mark_status_rows(
         status = row.get("status")
         if row.get("experiment") != experiment or status not in styles or row.get(x_key) == "":
             continue
+        if filters:
+            if any(row.get(key) != value for key, value in filters.items()):
+                continue
         marker, color, label = styles[str(status)]
         ax.scatter(
             row[x_key],

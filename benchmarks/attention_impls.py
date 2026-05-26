@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from contextlib import nullcontext
 from importlib import import_module
 
 import torch
@@ -43,8 +44,9 @@ def sdpa_attention(
     v: torch.Tensor,
     causal: bool = True,
 ) -> torch.Tensor:
-    """PyTorch SDPA; on CUDA it can dispatch to memory-efficient/Flash kernels."""
-    return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+    """PyTorch SDPA forced to use the math backend (no Flash/ME on CUDA)."""
+    with _sdpa_math_context(q.device):
+        return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
 
 
 def flash_sdpa_attention(
@@ -149,6 +151,24 @@ def _flash_attn_interface():
         "flash_attn requires the external flash-attn package. "
         "Install a build compatible with your CUDA/PyTorch."
     )
+
+
+def _sdpa_math_context(device: torch.device):
+    if device.type != "cuda":
+        return nullcontext()
+
+    try:
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+    except ImportError:
+        sdp_kernel = getattr(torch.backends.cuda, "sdp_kernel", None)
+        if sdp_kernel is None:
+            raise RuntimeError(
+                "Cannot force SDPA to use math backend. "
+                "Upgrade PyTorch to a version that exposes sdpa_kernel or sdp_kernel."
+            )
+        return sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True)
+
+    return sdpa_kernel(SDPBackend.MATH)
 
 
 
