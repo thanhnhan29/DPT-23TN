@@ -153,6 +153,39 @@ def _flash_attn_interface():
     )
 
 
+def mha_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    causal: bool = True,
+) -> torch.Tensor:
+    """Multi-Head Attention (MHA) explicitly using PyTorch SDPA."""
+    return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+
+
+def gqa_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    causal: bool = True,
+) -> torch.Tensor:
+    """Grouped Query Attention (GQA) explicitly using PyTorch SDPA by slicing K and V."""
+    q_heads = q.size(1)
+    # choose fewer KV heads (e.g., 1/4 of query heads) but at least 1
+    kv_heads = max(1, q_heads // 4)
+
+    k_gqa = k[:, :kv_heads, :, :].contiguous()
+    v_gqa = v[:, :kv_heads, :, :].contiguous()
+
+    # Repeat/interleave KV heads to match Q heads, then slice to exact size.
+    if kv_heads != q_heads:
+        repeat = (q_heads + kv_heads - 1) // kv_heads
+        k_gqa = k_gqa.repeat_interleave(repeat, dim=1)[:, :q_heads, :, :]
+        v_gqa = v_gqa.repeat_interleave(repeat, dim=1)[:, :q_heads, :, :]
+
+    return F.scaled_dot_product_attention(q, k_gqa, v_gqa, is_causal=causal)
+
+
 def _sdpa_math_context(device: torch.device):
     if device.type != "cuda":
         return nullcontext()
@@ -178,4 +211,6 @@ ATTENTION_METHODS: dict[str, AttentionFn] = {
     "flash_sdpa": flash_sdpa_attention,
     "flash_attn": flash_attn_attention,
     "flash_attn_v1": flash_attn_attention,
+    "mha": mha_attention,
+    "gqa": gqa_attention,
 }
