@@ -78,11 +78,21 @@ def flash_attn_attention(
     if q.device.type != "cuda":
         raise RuntimeError("flash_attn requires CUDA.")
 
+    orig_dtype = q.dtype
+    if orig_dtype not in (torch.float16, torch.bfloat16):
+        q = q.to(torch.float16)
+        k = k.to(torch.float16)
+        v = v.to(torch.float16)
+
     q_bshd = q.transpose(1, 2).contiguous()
     k_bshd = k.transpose(1, 2).contiguous()
     v_bshd = v.transpose(1, 2).contiguous()
     out = _flash_attn_func(q_bshd, k_bshd, v_bshd, causal=causal)
-    return out.transpose(1, 2).contiguous()
+    
+    out = out.transpose(1, 2).contiguous()
+    if out.dtype != orig_dtype:
+        out = out.to(orig_dtype)
+    return out
 
 
 def _flash_attn_func(
